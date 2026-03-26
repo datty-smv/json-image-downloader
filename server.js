@@ -51,11 +51,14 @@ function fetchBuffer(url) {
   });
 }
 
-function saveToDisk(imgPath, buffer) {
-  // "images/parts/avatar/" 以降のパスだけを使う
-  const marker = "images/parts/avatar/";
-  const idx = imgPath.indexOf(marker);
-  const relativePath = idx !== -1 ? imgPath.substring(idx + marker.length) : path.basename(imgPath);
+function saveToDisk(imgPath, buffer, stripPrefix) {
+  let relativePath;
+  if (stripPrefix && stripPrefix.length > 0) {
+    const idx = imgPath.indexOf(stripPrefix);
+    relativePath = idx !== -1 ? imgPath.substring(idx + stripPrefix.length) : path.basename(imgPath);
+  } else {
+    relativePath = imgPath;
+  }
   const dest = path.join(OUT_DIR, relativePath);
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.writeFileSync(dest, buffer);
@@ -232,8 +235,13 @@ const HTML = /*html*/ `
       <label>ベースURL</label>
       <input type="text" id="baseUrl" placeholder="https://example.com/" value="">
     </div>
+    <div class="config-row" style="margin-top:0.75rem;">
+      <label>保存パス除去</label>
+      <input type="text" id="stripPrefix" value="images/parts/avatar/" placeholder="images/parts/avatar/">
+    </div>
     <div class="key-path-hint">
-      キーを変更するとJSON内の別プロパティを参照できます。ネスト対応: <code>front.avatarPath</code>
+      画像キー: JSON内のプロパティ名（ネスト対応: <code>front.avatarPath</code>）<br>
+      保存パス除去: この文字列より後ろのパスで保存。空欄ならフルパスのまま保存。
     </div>
   </div>
 
@@ -274,7 +282,7 @@ const HTML = /*html*/ `
 (() => {
   const $ = id => document.getElementById(id);
   const dropZone=$('dropZone'), fileInput=$('fileInput'), configPanel=$('configPanel');
-  const keyPathInput=$('keyPath'), baseUrlInput=$('baseUrl');
+  const keyPathInput=$('keyPath'), baseUrlInput=$('baseUrl'), stripPrefixInput=$('stripPrefix');
   const statsBar=$('statsBar'), actionsBar=$('actionsBar');
   const progressArea=$('progressArea'), progressFill=$('progressFill'), progressText=$('progressText');
   const gridArea=$('gridArea'), grid=$('grid'), logArea=$('logArea'), logBox=$('logBox');
@@ -424,7 +432,7 @@ const HTML = /*html*/ `
         const resp = await fetch('/download', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: fullUrl, path: item.path })
+          body: JSON.stringify({ url: fullUrl, path: item.path, stripPrefix: stripPrefixInput.value.trim() })
         });
         const result = await resp.json();
         if (result.ok) {
@@ -504,9 +512,9 @@ const server = http.createServer(async (req, res) => {
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
       try {
-        const { url: imgUrl, path: imgPath } = JSON.parse(body);
+        const { url: imgUrl, path: imgPath, stripPrefix } = JSON.parse(body);
         const buf = await fetchBuffer(imgUrl);
-        const dest = saveToDisk(imgPath, buf);
+        const dest = saveToDisk(imgPath, buf, stripPrefix || "");
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, dest }));
       } catch (err) {
