@@ -583,7 +583,48 @@
     updateStats();
   });
 
-  // --- Download ---
+  // --- Download via canvas (CORS-free) ---
+  function downloadViaCanvas(imgSrc, filename) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob(blob => {
+            if (blob) {
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(blob);
+              a.download = filename;
+              a.click();
+              URL.revokeObjectURL(a.href);
+              log(`✓ ${filename}`, 'ok');
+            } else {
+              log(`✗ ${filename}: blob生成失敗`, 'err');
+            }
+            resolve();
+          }, 'image/png');
+        } catch (e) {
+          // canvas tainted — fallback to open in new tab
+          log(`⚠ ${filename}: canvas汚染 → 新タブで開きます`, 'err');
+          window.open(imgSrc, '_blank');
+          resolve();
+        }
+      };
+      img.onerror = () => {
+        // Fallback: direct link open
+        log(`⚠ ${filename}: 読込失敗 → 新タブで開きます`, 'err');
+        window.open(imgSrc, '_blank');
+        resolve();
+      };
+      img.src = imgSrc;
+    });
+  }
+
   btnDownload.addEventListener('click', async () => {
     const selected = items.filter(i => i.selected && !i.error);
     if (!selected.length) return;
@@ -598,24 +639,12 @@
     for (const item of selected) {
       const fullUrl = base ? new URL(item.path, base).href : item.path;
       const filename = item.path.split('/').pop();
-      try {
-        const resp = await fetch(fullUrl);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const blob = await resp.blob();
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(a.href);
-        log(`✓ ${filename}`, 'ok');
-      } catch (err) {
-        log(`✗ ${filename}: ${err.message}`, 'err');
-      }
+      await downloadViaCanvas(fullUrl, filename);
       done++;
       progressFill.style.width = `${(done / total) * 100}%`;
       progressText.textContent = `${done} / ${total}`;
       // small delay to avoid browser blocking rapid downloads
-      await new Promise(r => setTimeout(r, 150));
+      await new Promise(r => setTimeout(r, 200));
     }
 
     btnDownload.disabled = false;
