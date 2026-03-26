@@ -10,5 +10,5 @@ $ node server.js
 ポートや保存先を変えたい場合は以下のように指定します。
 
 ```
-bashnode server.js --port 8080 --out ./my_images
+$ node server.js --port 8080 --out ./my_images
 ```
